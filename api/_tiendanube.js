@@ -19,7 +19,7 @@ async function getAllProducts() {
   while (true) {
     const res = await axios.get(`${BASE_URL}/products`, {
       headers: HEADERS,
-      params: { page, per_page: 200, fields: "id,variants,sku" },
+      params: { page, per_page: 200, fields: "id,variants" },
     });
     products = products.concat(res.data);
     if (res.data.length < 200) break;
