@@ -1,0 +1,12 @@
+{
+  "name": "dragonfish-vercel",
+  "version": "0.1.0",
+  "description": "Receptor de stock de Dragonfish y sincronizador con Tienda Nube",
+  "dependencies": {
+    "axios": "^1.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.4"
+  }
+}
