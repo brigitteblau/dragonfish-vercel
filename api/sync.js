@@ -46,7 +46,7 @@ module.exports = async (req, res) => {
       const partes = [row.Articulo];
       if (row.Color) partes.push(row.Color);
       if (row.Talle) partes.push(row.Talle);
-      const sku = partes.join("-");
+      const sku = partes.join("##");
       dfStockMap[sku] = row.Disponible >= 0 ? row.Disponible : 0;
     }
 
