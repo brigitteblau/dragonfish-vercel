@@ -7,10 +7,9 @@
 # ====== CONFIG: completar con tus datos ======
 $dragonfishUrl = "http://localhost:8000/api.Dragonfish"
 $idCliente     = "API-B"
-$token         = "223993f00e1f02fb411d0a68104f7c53e56c4927"
+$token         = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE4MTM1NDY4MDAsInVzdWFyaW8iOiJBRE1JTiIsInBhc3N3b3JkIjoiYWQ4ZDM2ZWViNjE3MmQ0ZDhlYzllYWZkMGUyYTFiNzVkMjY0OTc5YTU0OTgzZWVlZTMxZDM1OWM4ZjJmZWMzNyJ9.19VRYxMp4peC9Eeu4WwLrEdNCviY2HoPnt35huUDmlA"
 $vercelUrl     = "https://dragonfish-vercel.vercel.app/api/sync"
-$syncSecret    = "8e04c6b16accd3deb65c7ef52c95afa9bee0bcd2cf8ac3ac"
-# ==============================================
+$syncSecret    = "briguXdragonfish"
 
 $headers = @{
     "IdCliente"     = $idCliente
