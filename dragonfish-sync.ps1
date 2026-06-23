@@ -7,9 +7,9 @@
 # ====== CONFIG: completar con tus datos ======
 $dragonfishUrl = "http://localhost:8000/api.Dragonfish"
 $idCliente     = "API-B"
-$token         = "PEGAR_ACA_TU_TOKEN_JWT_COMPLETO"
-$vercelUrl     = "PEGAR_ACA_TU_URL_DE_VERCEL/api/sync"
-$syncSecret    = "PEGAR_ACA_TU_SYNC_SECRET"
+$token         = "223993f00e1f02fb411d0a68104f7c53e56c4927"
+$vercelUrl     = "https://dragonfish-vercel.vercel.app/api/sync"
+$syncSecret    = "8e04c6b16accd3deb65c7ef52c95afa9bee0bcd2cf8ac3ac"
 # ==============================================
 
 $headers = @{
