@@ -1,8 +1,8 @@
 const {
   getAllProducts,
-  buildSkuMap,
   updateVariantStock,
   normalizeSku,
+  getVariantStock,
 } = require("./_tiendanube");
 
 function cleanPart(value) {
@@ -31,17 +31,7 @@ function getDisponible(row) {
   return number >= 0 ? number : 0;
 }
 
-/**
- * Arma candidatos de SKU desde Dragonfish.
- *
- * Dragonfish / Znube / Tiendanube pueden usar:
- * - SW1001!31!L
- * - SW1001##31##L
- * - SW1001#31#L
- *
- * Nosotros generamos varios formatos, pero para matchear usamos normalizeSku().
- */
-function buildDragonfishSkuCandidates(row) {
+function buildDragonfishCandidates(row) {
   const articulo = cleanPart(
     row.Articulo ??
       row.articulo ??
@@ -54,36 +44,143 @@ function buildDragonfishSkuCandidates(row) {
   const color = cleanPart(row.Color ?? row.color);
   const talle = cleanPart(row.Talle ?? row.talle);
 
-  if (!articulo) return [];
-
-  const partes = [articulo];
-
-  if (color) partes.push(color);
-  if (talle) partes.push(talle);
-
-  const candidates = [
-    partes.join("!"),
-    partes.join("##"),
-    partes.join("#"),
-    partes.join("-"),
-    partes.join(""),
-  ];
-
-  // Por si Dragonfish trae un SKU ya armado en otro campo.
-  const possibleDirectSku =
+  const directSku = cleanPart(
     row.SKU ??
-    row.Sku ??
-    row.sku ??
-    row.CodBarra ??
-    row.codBarra ??
-    row.CodigoBarras ??
-    row.codigoBarras;
+      row.Sku ??
+      row.sku ??
+      row.CodBarra ??
+      row.codBarra ??
+      row.CodigoBarras ??
+      row.codigoBarras
+  );
 
-  if (possibleDirectSku) {
-    candidates.push(cleanPart(possibleDirectSku));
+  const candidates = [];
+
+  if (directSku) {
+    candidates.push(directSku);
+  }
+
+  if (articulo) {
+    if (color && talle) {
+      candidates.push(`${articulo}!${color}!${talle}`);
+      candidates.push(`${articulo}#${color}#${talle}`);
+      candidates.push(`${articulo}##${color}##${talle}`);
+      candidates.push(`${articulo}${color}${talle}`);
+    }
+
+    if (!color && talle) {
+      candidates.push(`${articulo}!${talle}`);
+      candidates.push(`${articulo}#${talle}`);
+      candidates.push(`${articulo}##${talle}`);
+      candidates.push(`${articulo}${talle}`);
+    }
+
+    if (color && !talle) {
+      candidates.push(`${articulo}!${color}`);
+      candidates.push(`${articulo}#${color}`);
+      candidates.push(`${articulo}##${color}`);
+      candidates.push(`${articulo}${color}`);
+    }
+
+    candidates.push(articulo);
   }
 
   return [...new Set(candidates.filter(Boolean))];
+}
+
+function getArticuloFromRow(row) {
+  return cleanPart(
+    row.Articulo ??
+      row.articulo ??
+      row.CodigoArticulo ??
+      row.codigoArticulo ??
+      row.Codigo ??
+      row.codigo
+  );
+}
+
+function getTalleFromRow(row) {
+  return cleanPart(row.Talle ?? row.talle);
+}
+
+function getColorFromRow(row) {
+  return cleanPart(row.Color ?? row.color);
+}
+
+function buildDragonfishStockMap(stock) {
+  const map = {};
+  const filasSinSku = [];
+  const duplicados = [];
+
+  for (const row of stock) {
+    const candidates = buildDragonfishCandidates(row);
+
+    if (!candidates.length) {
+      filasSinSku.push(row);
+      continue;
+    }
+
+    const disponible = getDisponible(row);
+    const articulo = getArticuloFromRow(row);
+    const color = getColorFromRow(row);
+    const talle = getTalleFromRow(row);
+
+    for (const candidate of candidates) {
+      const normalizedSku = normalizeSku(candidate);
+
+      if (!normalizedSku) continue;
+
+      if (map[normalizedSku]) {
+        duplicados.push({
+          normalizedSku,
+          existente: map[normalizedSku].displaySku,
+          nuevo: candidate,
+        });
+      }
+
+      map[normalizedSku] = {
+        normalizedSku,
+        displaySku: candidate,
+        stock: disponible,
+        articulo,
+        color,
+        talle,
+        originalRow: row,
+      };
+    }
+  }
+
+  return {
+    map,
+    filasSinSku,
+    duplicados,
+  };
+}
+
+function getTiendanubeVariants(products) {
+  const variants = [];
+
+  for (const product of products) {
+    for (const variant of product.variants || []) {
+      if (!variant.sku) continue;
+
+      const originalSku = String(variant.sku).trim();
+      const normalizedSku = normalizeSku(originalSku);
+
+      if (!normalizedSku) continue;
+
+      variants.push({
+        productId: product.id,
+        productName: product.name,
+        variantId: variant.id,
+        originalSku,
+        normalizedSku,
+        currentStock: getVariantStock(variant),
+      });
+    }
+  }
+
+  return variants;
 }
 
 module.exports = async (req, res) => {
@@ -111,85 +208,56 @@ module.exports = async (req, res) => {
   }
 
   try {
-    console.log(`[sync] Recibidas ${stock.length} filas desde Dragonfish`);
+    console.log(`[sync] Recibidas ${stock.length} filas de Dragonfish`);
 
-    const dfStockMap = {};
-    const filasSinSku = [];
+    const {
+      map: dragonfishStockMap,
+      filasSinSku,
+      duplicados,
+    } = buildDragonfishStockMap(stock);
 
-    for (const row of stock) {
-      const candidates = buildDragonfishSkuCandidates(row);
+    console.log(`[sync] SKUs posibles Dragonfish: ${Object.keys(dragonfishStockMap).length}`);
 
-      if (!candidates.length) {
-        filasSinSku.push(row);
-        continue;
-      }
+    const products = await getAllProducts();
+    const tnVariants = getTiendanubeVariants(products);
 
-      const displaySku = candidates[0];
-      const normalizedSku = normalizeSku(displaySku);
-      const disponible = getDisponible(row);
-
-      if (!normalizedSku) {
-        filasSinSku.push(row);
-        continue;
-      }
-
-      // Si Dragonfish manda la misma variante más de una vez, pisamos con el último valor.
-      dfStockMap[normalizedSku] = {
-        displaySku,
-        normalizedSku,
-        candidates,
-        stock: disponible,
-        originalRow: row,
-      };
-    }
-
-    console.log(`[sync] SKUs Dragonfish procesados: ${Object.keys(dfStockMap).length}`);
-
-    const tnProducts = await getAllProducts();
-
-    console.log(`[sync] Productos Tiendanube encontrados: ${tnProducts.length}`);
-
-    const { map: tnSkuMap, duplicados } = buildSkuMap(tnProducts);
-
-    console.log(`[sync] SKUs Tiendanube encontrados: ${Object.keys(tnSkuMap).length}`);
-
-    if (duplicados.length > 0) {
-      console.log(`[sync] OJO: Hay ${duplicados.length} SKUs duplicados normalizados en Tiendanube`);
-      console.log(JSON.stringify(duplicados.slice(0, 20), null, 2));
-    }
+    console.log(`[sync] Variantes con SKU en Tiendanube: ${tnVariants.length}`);
 
     const resultados = {
       actualizados: 0,
       sinCambios: 0,
       noEncontrados: [],
       errores: [],
-      duplicadosTiendanube: duplicados.length,
       filasSinSku: filasSinSku.length,
+      duplicadosDragonfish: duplicados.length,
     };
 
-    for (const item of Object.values(dfStockMap)) {
-      const tnVariant = tnSkuMap[item.normalizedSku];
+    for (const tnVariant of tnVariants) {
+      const dfItem = dragonfishStockMap[tnVariant.normalizedSku];
 
-      if (!tnVariant) {
+      if (!dfItem) {
         resultados.noEncontrados.push({
-          dragonfishSku: item.displaySku,
-          normalizedSku: item.normalizedSku,
-          candidates: item.candidates,
+          tiendanubeSku: tnVariant.originalSku,
+          normalizedSku: tnVariant.normalizedSku,
+          productId: tnVariant.productId,
+          productName: tnVariant.productName,
+          variantId: tnVariant.variantId,
+          currentStockTiendanube: tnVariant.currentStock,
         });
 
         continue;
       }
 
-      if (Number(tnVariant.currentStock) === Number(item.stock)) {
+      if (Number(tnVariant.currentStock) === Number(dfItem.stock)) {
         resultados.sinCambios++;
         continue;
       }
 
       try {
-        await updateVariantStock(tnVariant.productId, tnVariant.variantId, item.stock);
+        await updateVariantStock(tnVariant.productId, tnVariant.variantId, dfItem.stock);
 
         console.log(
-          `[sync] Actualizado ${tnVariant.originalSku} | normalizado ${item.normalizedSku}: ${tnVariant.currentStock} -> ${item.stock}`
+          `[sync] Actualizado TN SKU ${tnVariant.originalSku} usando Dragonfish ${dfItem.displaySku}: ${tnVariant.currentStock} -> ${dfItem.stock}`
         );
 
         resultados.actualizados++;
@@ -200,9 +268,10 @@ module.exports = async (req, res) => {
         );
 
         resultados.errores.push({
-          dragonfishSku: item.displaySku,
           tiendanubeSku: tnVariant.originalSku,
+          normalizedSku: tnVariant.normalizedSku,
           productId: tnVariant.productId,
+          productName: tnVariant.productName,
           variantId: tnVariant.variantId,
           error: err?.response?.data || err.message,
         });
@@ -210,18 +279,23 @@ module.exports = async (req, res) => {
     }
 
     console.log(
-      `[sync] Resultado: ${resultados.actualizados} actualizados, ${resultados.sinCambios} sin cambios, ${resultados.noEncontrados.length} no encontrados, ${resultados.errores.length} errores`
+      `[sync] Resultado: ${resultados.actualizados} actualizados, ${resultados.sinCambios} sin cambios, ${resultados.noEncontrados.length} SKUs de Tiendanube sin match en Dragonfish`
     );
 
     return res.status(200).json({
       ok: true,
       actualizados: resultados.actualizados,
       sinCambios: resultados.sinCambios,
+
+      // Mantengo este nombre para que tu PowerShell actual siga mostrando .noEncontrados.Count
+      noEncontrados: resultados.noEncontrados,
+
       noEncontradosCantidad: resultados.noEncontrados.length,
       noEncontradosSample: resultados.noEncontrados.slice(0, 30),
+
       errores: resultados.errores,
-      duplicadosTiendanube: resultados.duplicadosTiendanube,
       filasSinSku: resultados.filasSinSku,
+      duplicadosDragonfish: resultados.duplicadosDragonfish,
     });
   } catch (err) {
     console.error("[sync] Error general:", err?.response?.data || err.message);
