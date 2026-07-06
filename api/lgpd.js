@@ -1,5 +1,5 @@
 module.exports = (req, res) => {
-  console.log("[lpgd] Webhook recibido", {
+  console.log("[lgpd] Webhook recibido", {
     method: req.method,
     query: req.query,
     body: req.body,
@@ -7,6 +7,6 @@ module.exports = (req, res) => {
 
   return res.status(200).json({
     ok: true,
-    endpoint: "lpgd",
+    endpoint: "lgpd",
   });
 };
