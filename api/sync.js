@@ -175,6 +175,7 @@ function getTiendanubeVariants(products) {
         variantId: variant.id,
         originalSku,
         normalizedSku,
+        articulo: normalizeSku(originalSku.split(/[#!]/)[0]),
         currentStock: getVariantStock(variant),
       });
     }
@@ -234,9 +235,18 @@ module.exports = async (req, res) => {
 
     // Dragonfish no devuelve las variantes con stock 0 (no tienen fila),
     // así que una variante de TN sin match significa "sin stock" y hay que bajarla a 0.
+    // Solo lo hacemos si el artículo (lo que va antes del primer # o !) existe en
+    // Dragonfish: así no tocamos combos ni SKUs armados a mano que Dragonfish no conoce.
+    const articulosDragonfish = new Set(
+      stock.map((row) => normalizeSku(getArticuloFromRow(row))).filter(Boolean)
+    );
+
+    const esFaltanteParaCero = (v) =>
+      !dragonfishStockMap[v.normalizedSku] && articulosDragonfish.has(v.articulo);
+
     // Freno de seguridad: si faltan demasiadas, probablemente vino incompleta la data
     // de Dragonfish y no tocamos nada para no vaciar la tienda.
-    const faltantes = tnVariants.filter((v) => !dragonfishStockMap[v.normalizedSku]).length;
+    const faltantes = tnVariants.filter(esFaltanteParaCero).length;
     const maxRatioFaltantes = Number(process.env.MAX_MISSING_RATIO ?? 0.5);
     const ponerFaltantesEnCero =
       tnVariants.length > 0 && faltantes / tnVariants.length <= maxRatioFaltantes;
@@ -260,9 +270,14 @@ module.exports = async (req, res) => {
           productName: tnVariant.productName,
           variantId: tnVariant.variantId,
           currentStockTiendanube: tnVariant.currentStock,
+          articuloEnDragonfish: articulosDragonfish.has(tnVariant.articulo),
         });
 
-        if (!ponerFaltantesEnCero || Number(tnVariant.currentStock) === 0) {
+        if (
+          !ponerFaltantesEnCero ||
+          !esFaltanteParaCero(tnVariant) ||
+          Number(tnVariant.currentStock) === 0
+        ) {
           continue;
         }
 
