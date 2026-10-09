@@ -232,8 +232,25 @@ module.exports = async (req, res) => {
       duplicadosDragonfish: duplicados.length,
     };
 
+    // Dragonfish no devuelve las variantes con stock 0 (no tienen fila),
+    // así que una variante de TN sin match significa "sin stock" y hay que bajarla a 0.
+    // Freno de seguridad: si faltan demasiadas, probablemente vino incompleta la data
+    // de Dragonfish y no tocamos nada para no vaciar la tienda.
+    const faltantes = tnVariants.filter((v) => !dragonfishStockMap[v.normalizedSku]).length;
+    const maxRatioFaltantes = Number(process.env.MAX_MISSING_RATIO ?? 0.5);
+    const ponerFaltantesEnCero =
+      tnVariants.length > 0 && faltantes / tnVariants.length <= maxRatioFaltantes;
+
+    if (!ponerFaltantesEnCero) {
+      console.warn(
+        `[sync] ${faltantes}/${tnVariants.length} variantes sin match en Dragonfish: NO se ponen en 0 (supera MAX_MISSING_RATIO=${maxRatioFaltantes})`
+      );
+    }
+
+    resultados.puestosEnCero = 0;
+
     for (const tnVariant of tnVariants) {
-      const dfItem = dragonfishStockMap[tnVariant.normalizedSku];
+      let dfItem = dragonfishStockMap[tnVariant.normalizedSku];
 
       if (!dfItem) {
         resultados.noEncontrados.push({
@@ -245,7 +262,12 @@ module.exports = async (req, res) => {
           currentStockTiendanube: tnVariant.currentStock,
         });
 
-        continue;
+        if (!ponerFaltantesEnCero || Number(tnVariant.currentStock) === 0) {
+          continue;
+        }
+
+        dfItem = { displaySku: "(sin fila en Dragonfish)", stock: 0 };
+        resultados.puestosEnCero++;
       }
 
       if (Number(tnVariant.currentStock) === Number(dfItem.stock)) {
@@ -292,6 +314,9 @@ module.exports = async (req, res) => {
 
       noEncontradosCantidad: resultados.noEncontrados.length,
       noEncontradosSample: resultados.noEncontrados.slice(0, 30),
+
+      puestosEnCero: resultados.puestosEnCero,
+      faltantesEnCeroAplicado: ponerFaltantesEnCero,
 
       errores: resultados.errores,
       filasSinSku: resultados.filasSinSku,

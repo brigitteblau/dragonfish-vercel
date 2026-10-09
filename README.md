@@ -100,3 +100,16 @@ armar una tabla de equivalencias (lo vemos cuando veamos los SKUs reales de TN).
 - El JWT de Dragonfish expira en 2 años (según la config que hiciste).
 - Si Dragonfish devuelve Disponible negativo, el script manda 0 a TN
   (no tiene sentido poner stock negativo en la tienda).
+
+
+
+  $dragonfishUrl = "http://localhost:8000/api.Dragonfish"
+$idCliente     = "API-B"
+$token         = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE4MTM1NDY4MDAsInVzdWFyaW8iOiJBRE1JTiIsInBhc3N3b3JkIjoiYWQ4ZDM2ZWViNjE3MmQ0ZDhlYzllYWZkMGUyYTFiNzVkMjY0OTc5YTU0OTgzZWVlZTMxZDM1OWM4ZjJmZWMzNyJ9.19VRYxMp4peC9Eeu4WwLrEdNCviY2HoPnt35huUDmlA"
+$vercelUrl     = "https://dragonfish-vercel.vercel.app/api/sync"
+$syncSecret    = "briguXdragonfish"
+
+$headers = @{
+    "IdCliente"     = $idCliente
+    "Authorization" = $token
+}
